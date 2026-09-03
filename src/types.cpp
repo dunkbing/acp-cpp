@@ -18,19 +18,19 @@ namespace acp {
     InitializeResult InitializeResult::fromJson(const json& j) {
         InitializeResult out;
         out.raw = j;
-        out.protocolVersion = j.value("protocolVersion", 0);
+        out.protocolVersion = getInt(j, "protocolVersion");
         const json caps = j.value("agentCapabilities", json::object());
-        out.agentCapabilities.loadSession = caps.value("loadSession", false);
+        out.agentCapabilities.loadSession = getBool(caps, "loadSession", false);
         const json prompt = caps.value("promptCapabilities", json::object());
-        out.agentCapabilities.promptImage = prompt.value("image", false);
-        out.agentCapabilities.promptAudio = prompt.value("audio", false);
-        out.agentCapabilities.promptEmbeddedContext = prompt.value("embeddedContext", false);
+        out.agentCapabilities.promptImage = getBool(prompt, "image", false);
+        out.agentCapabilities.promptAudio = getBool(prompt, "audio", false);
+        out.agentCapabilities.promptEmbeddedContext = getBool(prompt, "embeddedContext", false);
         const json mcp = caps.value("mcpCapabilities", json::object());
-        out.agentCapabilities.mcpHttp = mcp.value("http", false);
-        out.agentCapabilities.mcpSse = mcp.value("sse", false);
+        out.agentCapabilities.mcpHttp = getBool(mcp, "http", false);
+        out.agentCapabilities.mcpSse = getBool(mcp, "sse", false);
         for (const auto& m : j.value("authMethods", json::array())) {
             out.authMethods.push_back(
-                {m.value("id", ""), m.value("name", ""), m.value("description", "")});
+                {getString(m, "id"), getString(m, "name"), getString(m, "description")});
         }
         return out;
     }
@@ -55,15 +55,15 @@ namespace acp {
         if (!block.is_object()) {
             return "";
         }
-        const std::string type = block.value("type", "");
+        const std::string type = getString(block, "type");
         if (type == "text") {
-            return block.value("text", "");
+            return getString(block, "text");
         }
         if (type == "resource") {
-            return block.value("resource", json::object()).value("text", "");
+            return getString(block.value("resource", json::object()), "text");
         }
         if (type == "resource_link") {
-            return block.value("uri", "");
+            return getString(block, "uri");
         }
         return "";
     }
@@ -74,11 +74,11 @@ namespace acp {
             return out;
         }
         for (const auto& item : content) {
-            const std::string type = item.value("type", "");
+            const std::string type = getString(item, "type");
             if (type == "content") {
                 out += contentBlockText(item.value("content", json::object()));
             } else if (type == "diff") {
-                out += "diff: " + item.value("path", "");
+                out += "diff: " + getString(item, "path");
             } else if (type == "terminal") {
                 out += "[terminal output]";
             }
@@ -92,10 +92,10 @@ namespace acp {
     namespace {
         ToolCall toolCallFromJson(const json& j) {
             ToolCall tc;
-            tc.id = j.value("toolCallId", "");
-            tc.title = j.value("title", "");
-            tc.kind = j.value("kind", "");
-            tc.status = j.value("status", "");
+            tc.id = getString(j, "toolCallId");
+            tc.title = getString(j, "title");
+            tc.kind = getString(j, "kind");
+            tc.status = getString(j, "status");
             tc.content = j.value("content", json::array());
             tc.locations = j.value("locations", json::array());
             return tc;
@@ -105,7 +105,7 @@ namespace acp {
     SessionUpdate SessionUpdate::fromJson(const json& j) {
         SessionUpdate u;
         u.raw = j;
-        const std::string kind = j.value("sessionUpdate", "");
+        const std::string kind = getString(j, "sessionUpdate");
         if (kind == "user_message_chunk" || kind == "agent_message_chunk" ||
             kind == "agent_thought_chunk") {
             u.kind = kind == "user_message_chunk"    ? Kind::UserMessageChunk
@@ -120,16 +120,16 @@ namespace acp {
             u.kind = Kind::Plan;
             for (const auto& e : j.value("entries", json::array())) {
                 u.plan.push_back(
-                    {e.value("content", ""), e.value("priority", ""), e.value("status", "")});
+                    {getString(e, "content"), getString(e, "priority"), getString(e, "status")});
             }
         } else if (kind == "available_commands_update") {
             u.kind = Kind::AvailableCommandsUpdate;
             for (const auto& cmd : j.value("availableCommands", json::array())) {
                 AvailableCommand out;
-                out.name = cmd.value("name", "");
-                out.description = cmd.value("description", "");
+                out.name = getString(cmd, "name");
+                out.description = getString(cmd, "description");
                 if (cmd.contains("input") && cmd["input"].is_object()) {
-                    out.inputHint = cmd["input"].value("hint", "");
+                    out.inputHint = getString(cmd["input"], "hint");
                 }
                 if (!out.name.empty()) {
                     u.commands.push_back(std::move(out));
@@ -137,7 +137,7 @@ namespace acp {
             }
         } else if (kind == "current_mode_update") {
             u.kind = Kind::CurrentModeUpdate;
-            u.modeId = j.value("currentModeId", "");
+            u.modeId = getString(j, "currentModeId");
         }
         return u;
     }

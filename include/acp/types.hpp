@@ -13,6 +13,26 @@ namespace acp {
 
     using json = nlohmann::json;
 
+    // agents send explicit nulls for optional fields; json::value() throws on those
+    inline std::string getString(const json& j, const char* key) {
+        if (!j.is_object())
+            return "";
+        const auto it = j.find(key);
+        return it != j.end() && it->is_string() ? it->get<std::string>() : std::string{};
+    }
+    inline int getInt(const json& j, const char* key, int fallback = 0) {
+        if (!j.is_object())
+            return fallback;
+        const auto it = j.find(key);
+        return it != j.end() && it->is_number_integer() ? it->get<int>() : fallback;
+    }
+    inline bool getBool(const json& j, const char* key, bool fallback = false) {
+        if (!j.is_object())
+            return fallback;
+        const auto it = j.find(key);
+        return it != j.end() && it->is_boolean() ? it->get<bool>() : fallback;
+    }
+
     constexpr int kProtocolVersion = 1;
 
     struct RpcError {

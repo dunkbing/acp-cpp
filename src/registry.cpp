@@ -1,6 +1,7 @@
 #include "acp/registry.hpp"
 #include "acp/log.hpp"
 #include "acp/process.hpp"
+#include "acp/types.hpp"
 
 #include <cstdlib>
 #include <fstream>
@@ -203,25 +204,25 @@ namespace acp::registry {
             const json root = json::parse(body);
             for (const auto& entry : root.value("agents", json::array())) {
                 Agent agent;
-                agent.id = entry.value("id", "");
+                agent.id = getString(entry, "id");
                 agent.name = entry.value("name", agent.id);
-                agent.description = entry.value("description", "");
-                agent.version = entry.value("version", "");
+                agent.description = getString(entry, "description");
+                agent.version = getString(entry, "version");
                 if (agent.id.empty()) {
                     continue;
                 }
 
                 const json dist = entry.value("distribution", json::object());
-                agent.npmPackage = dist.value("npx", json::object()).value("package", "");
-                agent.pyPackage = dist.value("uvx", json::object()).value("package", "");
+                agent.npmPackage = getString(dist.value("npx", json::object()), "package");
+                agent.pyPackage = getString(dist.value("uvx", json::object()), "package");
 
                 const json binaries = dist.value("binary", json::object());
                 if (binaries.contains(platform)) {
                     const json& b = binaries[platform];
                     agent.hasBinary = true;
-                    agent.archiveUrl = b.value("archive", "");
-                    agent.archiveSha256 = b.value("sha256", "");
-                    agent.binaryCmd = b.value("cmd", "");
+                    agent.archiveUrl = getString(b, "archive");
+                    agent.archiveSha256 = getString(b, "sha256");
+                    agent.binaryCmd = getString(b, "cmd");
                 }
                 out.push_back(std::move(agent));
             }

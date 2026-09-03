@@ -132,7 +132,7 @@ namespace acp {
             const json params = msg.value("params", json::object());
             if (method == "session/update") {
                 SessionNotification n;
-                n.sessionId = params.value("sessionId", "");
+                n.sessionId = getString(params, "sessionId");
                 n.update = SessionUpdate::fromJson(params.value("update", json::object()));
                 client_->sessionUpdate(n);
             } else {
@@ -151,16 +151,16 @@ namespace acp {
         if (method == "session/request_permission") {
             PermissionRequest req;
             req.rpcId = id;
-            req.sessionId = params.value("sessionId", "");
+            req.sessionId = getString(params, "sessionId");
             const json tc = params.value("toolCall", json::object());
-            req.toolCall.id = tc.value("toolCallId", "");
-            req.toolCall.title = tc.value("title", "");
-            req.toolCall.kind = tc.value("kind", "");
-            req.toolCall.status = tc.value("status", "");
+            req.toolCall.id = getString(tc, "toolCallId");
+            req.toolCall.title = getString(tc, "title");
+            req.toolCall.kind = getString(tc, "kind");
+            req.toolCall.status = getString(tc, "status");
             req.toolCall.content = tc.value("content", json::array());
             for (const auto& opt : params.value("options", json::array())) {
                 req.options.push_back(
-                    {opt.value("optionId", ""), opt.value("name", ""), opt.value("kind", "")});
+                    {getString(opt, "optionId"), getString(opt, "name"), getString(opt, "kind")});
             }
             client_->requestPermission(req);
             return;
@@ -204,7 +204,9 @@ namespace acp {
         Response r;
         if (msg.contains("error")) {
             const json& err = msg["error"];
-            r.error = RpcError{err.value("code", 0), err.value("message", "Agent error"),
+            r.error = RpcError{getInt(err, "code"),
+                               (getString(err, "message").empty() ? std::string("Agent error")
+                                                                  : getString(err, "message")),
                                err.value("data", json())};
         } else {
             r.result = msg.value("result", json::object());
