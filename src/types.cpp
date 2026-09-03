@@ -2,9 +2,43 @@
 
 namespace acp {
 
+    namespace {
+        // agents wrap upstream failures as data.error {message, status, code}; the message
+        // is often itself a json blob with error.message inside (google apis)
+        std::string nestedErrorText(const json& data) {
+            if (!data.is_object()) {
+                return "";
+            }
+            const json inner = data.contains("error") ? data["error"] : data;
+            std::string msg = getString(inner, "message");
+            if (msg.empty() && inner.is_string()) {
+                msg = inner.get<std::string>();
+            }
+            if (!msg.empty() && msg.find('{') != std::string::npos) {
+                const json parsed = json::parse(msg, nullptr, false);
+                if (parsed.is_object()) {
+                    const json e = parsed.contains("error") ? parsed["error"] : parsed;
+                    const std::string deep = getString(e, "message");
+                    if (!deep.empty()) {
+                        msg = deep;
+                        if (const std::string status = getString(e, "status"); !status.empty()) {
+                            msg += " (" + status + ")";
+                        }
+                    }
+                }
+            }
+            while (!msg.empty() && (msg.back() == '\n' || msg.back() == ' ')) {
+                msg.pop_back();
+            }
+            return msg;
+        }
+    } // namespace
+
     std::string RpcError::describe() const {
         std::string text = message.empty() ? "Agent error" : message;
-        if (data.is_object() && data.contains("details")) {
+        if (const std::string nested = nestedErrorText(data); !nested.empty()) {
+            text += ": " + nested;
+        } else if (data.is_object() && data.contains("details")) {
             text += ": " + data["details"].dump();
         }
         return text;
