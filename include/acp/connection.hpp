@@ -61,6 +61,9 @@ namespace acp {
         std::future<Response> setSessionMode(const std::string& sessionId,
                                              const std::string& modeId,
                                              ResponseCallback callback = nullptr);
+        std::future<Response> setSessionConfigOption(const std::string& sessionId,
+                                                     const std::string& configId, json value,
+                                                     ResponseCallback callback = nullptr);
         void cancel(const std::string& sessionId);
 
         // answer a PermissionRequest; empty optionId = cancelled
@@ -91,9 +94,17 @@ namespace acp {
 
         Client* client_ = nullptr;
         long long pid_ = -1;
+#if defined(_WIN32)
+        void* processHandle_ = nullptr;
+        void* jobHandle_ = nullptr;
+        void* stdinHandle_ = nullptr;
+        void* stdoutHandle_ = nullptr;
+        void* stderrHandle_ = nullptr;
+#else
         int stdinFd_ = -1;
         int stdoutFd_ = -1;
         int stderrFd_ = -1;
+#endif
         std::thread reader_;
         std::thread errReader_;
 

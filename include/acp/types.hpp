@@ -143,6 +143,25 @@ namespace acp {
         std::string inputHint; // set when the command takes arguments
     };
 
+    struct ConfigOptionValue {
+        std::string value;
+        std::string name;
+        std::string description;
+    };
+
+    struct ConfigOption {
+        std::string id;
+        std::string name;
+        std::string description;
+        std::string category;
+        std::string type;
+        json currentValue;
+        std::vector<ConfigOptionValue> options;
+    };
+
+    // parses the configOptions field from a session result or session/update
+    std::vector<ConfigOption> configOptionsFromJson(const json& j);
+
     // one session/update notification
     struct SessionUpdate {
         enum class Kind {
@@ -154,6 +173,7 @@ namespace acp {
             Plan,
             AvailableCommandsUpdate,
             CurrentModeUpdate,
+            ConfigOptionsUpdate,
             Unknown,
         };
         Kind kind = Kind::Unknown;
@@ -163,6 +183,7 @@ namespace acp {
         std::vector<PlanEntry> plan;
         std::vector<AvailableCommand> commands;
         std::string modeId;
+        std::vector<ConfigOption> configOptions;
         json raw;
 
         static SessionUpdate fromJson(const json& j);

@@ -123,6 +123,33 @@ namespace acp {
         return out;
     }
 
+    std::vector<ConfigOption> configOptionsFromJson(const json& j) {
+        const json rawOptions = j.is_array() ? j : j.value("configOptions", json::array());
+        std::vector<ConfigOption> out;
+        for (const auto& raw : rawOptions) {
+            ConfigOption option;
+            option.id = getString(raw, "id");
+            option.name = getString(raw, "name");
+            option.description = getString(raw, "description");
+            option.category = getString(raw, "category");
+            option.type = getString(raw, "type");
+            option.currentValue = raw.value("currentValue", json());
+            for (const auto& rawValue : raw.value("options", json::array())) {
+                ConfigOptionValue value;
+                value.value = getString(rawValue, "value");
+                value.name = getString(rawValue, "name");
+                value.description = getString(rawValue, "description");
+                if (!value.value.empty()) {
+                    option.options.push_back(std::move(value));
+                }
+            }
+            if (!option.id.empty()) {
+                out.push_back(std::move(option));
+            }
+        }
+        return out;
+    }
+
     namespace {
         ToolCall toolCallFromJson(const json& j) {
             ToolCall tc;
@@ -172,6 +199,9 @@ namespace acp {
         } else if (kind == "current_mode_update") {
             u.kind = Kind::CurrentModeUpdate;
             u.modeId = getString(j, "currentModeId");
+        } else if (kind == "config_option_update") {
+            u.kind = Kind::ConfigOptionsUpdate;
+            u.configOptions = configOptionsFromJson(j);
         }
         return u;
     }

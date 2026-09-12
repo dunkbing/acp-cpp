@@ -43,9 +43,9 @@ fits your event loop. Callbacks on `acp::Client` also run on the reader thread.
 
 | Header | Contents |
 |--------|----------|
-| `acp/connection.hpp` | `Connection`: spawn an agent, `initialize`, `authenticate`, `newSession`, `loadSession`, `prompt`, `cancel`, `setSessionMode`, raw `request`/`notify` for extensions |
+| `acp/connection.hpp` | `Connection`: spawn an agent, `initialize`, `authenticate`, `newSession`, `loadSession`, `prompt`, `cancel`, `setSessionMode`, `setSessionConfigOption`, raw `request`/`notify` for extensions |
 | `acp/client.hpp` | `Client` interface: `sessionUpdate`, `requestPermission`, optional `readTextFile`/`writeTextFile`/`extRequest`, process lifecycle hooks |
-| `acp/types.hpp` | `SessionUpdate`, `ToolCall`, `PlanEntry`, `PermissionRequest`, `InitializeResult`, MCP server descriptors, content-block helpers |
+| `acp/types.hpp` | `SessionUpdate`, `ConfigOption`, `ToolCall`, `PlanEntry`, `PermissionRequest`, `InitializeResult`, MCP server descriptors, content-block helpers |
 | `acp/agents.hpp` | built-in catalog (Claude Code, Gemini CLI, Codex) and launch resolution: binary on PATH → `npx`/`bunx`/`pnpm dlx`/`yarn dlx`/`uvx` → install command |
 | `acp/registry.hpp` | the official agent registry: fetch it, download a prebuilt binary (SHA-256 verified) into `installRoot()` |
 | `acp/log.hpp` | `setLogger` — silent by default |
@@ -68,10 +68,8 @@ acp-chat npx --yes @agentclientprotocol/claude-agent-acp
 
 ## Notes
 
-- macOS and Linux. Windows compiles but `Connection::spawn` reports unsupported
-  until someone writes the `CreateProcess` transport.
-- The agent gets its own process group so `stop()` also reaches the `node`
-  grandchild that `npx` leaves behind.
+- macOS, Linux and Windows are supported. On Windows, `Connection` uses `CreateProcessW` with UTF-8 argv/environment conversion and a Job Object, so `stop()` also reaches wrapper and child processes such as `npx` → `node`.
+- Registry archives on Windows use the `tar.exe` bundled with Windows 10 and later.
 - `SpawnOptions::env` / `dropEnv` let you fix up the environment — GUI apps
   typically pass the login shell's `PATH` (`acp::agents::loginShellPath()`) and
   drop `CLAUDECODE`, which makes Claude Code refuse to start when it believes it

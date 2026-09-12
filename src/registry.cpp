@@ -104,7 +104,11 @@ namespace acp::registry {
 
     std::string platformKey() {
 #if defined(_WIN32)
+#if defined(_M_ARM64) || defined(__aarch64__)
+        return "windows-aarch64";
+#else
         return "windows-x86_64";
+#endif
 #elif defined(__APPLE__)
 #if defined(__aarch64__) || defined(__arm64__)
         return "darwin-aarch64";
@@ -280,10 +284,14 @@ namespace acp::registry {
             out.write(archive.data(), static_cast<std::streamsize>(archive.size()));
         }
 
-        // tar and unzip ship with macOS and linux; no archive library needed
+        // Windows 10+ ships bsdtar; it handles both zip and compressed tar archives.
+#if defined(_WIN32)
+        const RunResult unpack = run({"tar.exe", "-xf", archivePath.string(), "-C", dir.string()});
+#else
         const RunResult unpack =
             isZip ? run({"unzip", "-o", "-q", archivePath.string(), "-d", dir.string()})
                   : run({"tar", "-xzf", archivePath.string(), "-C", dir.string()});
+#endif
         fs::remove(archivePath, ec);
         if (!unpack.ok || unpack.exitCode != 0) {
             error = "could not unpack the archive: " +

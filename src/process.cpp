@@ -2,10 +2,139 @@
 
 #if defined(_WIN32)
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
 namespace acp {
-    RunResult run(const std::vector<std::string>&) {
+    namespace {
+        std::wstring toWide(const std::string& value) {
+            if (value.empty()) {
+                return {};
+            }
+            const int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
+                                                 static_cast<int>(value.size()), nullptr, 0);
+            if (size <= 0) {
+                return {};
+            }
+            std::wstring out(static_cast<size_t>(size), L'\0');
+            MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
+                                static_cast<int>(value.size()), out.data(), size);
+            return out;
+        }
+
+        std::wstring quoteArg(const std::wstring& value) {
+            if (!value.empty() && value.find_first_of(L" \t\n\v\"") == std::wstring::npos) {
+                return value;
+            }
+            std::wstring out = L"\"";
+            size_t backslashes = 0;
+            for (wchar_t c : value) {
+                if (c == L'\\') {
+                    ++backslashes;
+                } else if (c == L'\"') {
+                    out.append(backslashes * 2 + 1, L'\\');
+                    out += c;
+                    backslashes = 0;
+                } else {
+                    out.append(backslashes, L'\\');
+                    out += c;
+                    backslashes = 0;
+                }
+            }
+            out.append(backslashes * 2, L'\\');
+            out += L'\"';
+            return out;
+        }
+
+        std::string lastError() {
+            return "Windows error " + std::to_string(GetLastError());
+        }
+    } // namespace
+
+    RunResult run(const std::vector<std::string>& argv) {
         RunResult r;
-        r.error = "process spawning is not supported on Windows yet";
+        if (argv.empty()) {
+            r.error = "empty command";
+            return r;
+        }
+
+        SECURITY_ATTRIBUTES inheritable{sizeof(inheritable), nullptr, TRUE};
+        HANDLE childOut = nullptr;
+        HANDLE parentOut = nullptr;
+        HANDLE childIn = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                     &inheritable, OPEN_EXISTING, 0, nullptr);
+        if (childIn == INVALID_HANDLE_VALUE) {
+            r.error = lastError();
+            return r;
+        }
+        if (!CreatePipe(&parentOut, &childOut, &inheritable, 0) ||
+            !SetHandleInformation(parentOut, HANDLE_FLAG_INHERIT, 0)) {
+            r.error = lastError();
+            CloseHandle(childIn);
+            if (childOut) {
+                CloseHandle(childOut);
+            }
+            if (parentOut) {
+                CloseHandle(parentOut);
+            }
+            return r;
+        }
+
+        std::wstring commandLine;
+        for (const auto& arg : argv) {
+            if (!commandLine.empty()) {
+                commandLine += L' ';
+            }
+            const std::wstring wide = toWide(arg);
+            if (wide.empty() && !arg.empty()) {
+                CloseHandle(childIn);
+                CloseHandle(childOut);
+                CloseHandle(parentOut);
+                r.error = "command contains invalid UTF-8";
+                return r;
+            }
+            commandLine += quoteArg(wide);
+        }
+
+        STARTUPINFOW startup{};
+        startup.cb = sizeof(startup);
+        startup.dwFlags = STARTF_USESTDHANDLES;
+        startup.hStdInput = childIn;
+        startup.hStdOutput = childOut;
+        startup.hStdError = childOut;
+        PROCESS_INFORMATION process{};
+        if (!CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, TRUE, 0, nullptr,
+                            nullptr, &startup, &process)) {
+            r.error = lastError();
+            CloseHandle(childIn);
+            CloseHandle(childOut);
+            CloseHandle(parentOut);
+            return r;
+        }
+        CloseHandle(childIn);
+        CloseHandle(childOut);
+        CloseHandle(process.hThread);
+
+        char chunk[4096];
+        for (;;) {
+            DWORD read = 0;
+            if (!ReadFile(parentOut, chunk, sizeof(chunk), &read, nullptr) || read == 0) {
+                break;
+            }
+            r.output.append(chunk, static_cast<size_t>(read));
+        }
+        CloseHandle(parentOut);
+        WaitForSingleObject(process.hProcess, INFINITE);
+        DWORD exitCode = 0;
+        if (GetExitCodeProcess(process.hProcess, &exitCode)) {
+            r.ok = true;
+            r.exitCode = static_cast<int>(exitCode);
+        } else {
+            r.error = lastError();
+        }
+        CloseHandle(process.hProcess);
         return r;
     }
 } // namespace acp

@@ -3,10 +3,17 @@
 #include "acp/registry.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
+#include <optional>
 
 #if !defined(_WIN32)
 #include <unistd.h>
+#else
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
 #endif
 
 namespace acp::agents {
@@ -21,6 +28,55 @@ namespace acp::agents {
                 {"yarn", "yarn", "yarn global add " + package},
             };
         }
+
+#if defined(_WIN32)
+        std::wstring toWide(const std::string& value) {
+            if (value.empty()) {
+                return {};
+            }
+            const int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
+                                                 static_cast<int>(value.size()), nullptr, 0);
+            if (size <= 0) {
+                return {};
+            }
+            std::wstring out(static_cast<size_t>(size), L'\0');
+            MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
+                                out.data(), size);
+            return out;
+        }
+
+        std::string toUtf8(const std::wstring& value) {
+            if (value.empty()) {
+                return {};
+            }
+            const int size = WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()),
+                                                 nullptr, 0, nullptr, nullptr);
+            if (size <= 0) {
+                return {};
+            }
+            std::string out(static_cast<size_t>(size), '\0');
+            WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()), out.data(), size,
+                                nullptr, nullptr);
+            return out;
+        }
+
+        std::optional<std::string> findExecutable(const std::string& name) {
+            const std::wstring wide = toWide(name);
+            if (wide.empty() && !name.empty()) {
+                return std::nullopt;
+            }
+            const std::array<const wchar_t*, 4> extensions = {nullptr, L".exe", L".cmd", L".bat"};
+            std::array<wchar_t, 32768> path{};
+            for (const wchar_t* extension : extensions) {
+                const DWORD size = SearchPathW(nullptr, wide.c_str(), extension,
+                                               static_cast<DWORD>(path.size()), path.data(), nullptr);
+                if (size > 0 && size < path.size()) {
+                    return toUtf8(std::wstring(path.data(), size));
+                }
+            }
+            return std::nullopt;
+        }
+#endif
     } // namespace
 
     const std::vector<AgentDef>& catalog() {
@@ -98,7 +154,8 @@ namespace acp::agents {
     const std::string& loginShellPath() {
         static const std::string path = [] {
 #if defined(_WIN32)
-            return std::string{};
+            const char* envPath = std::getenv("PATH");
+            return std::string(envPath ? envPath : "");
 #else
             const char* shell = std::getenv("SHELL");
             const RunResult res =
@@ -124,7 +181,7 @@ namespace acp::agents {
 
     bool executableExists(const std::string& name) {
 #if defined(_WIN32)
-        return false;
+        return findExecutable(name).has_value();
 #else
         if (name.find('/') != std::string::npos) {
             return access(name.c_str(), X_OK) == 0;
@@ -152,15 +209,38 @@ namespace acp::agents {
             managed->insert(managed->end(), def.runArgs.begin(), def.runArgs.end());
             return managed;
         }
-        if (!def.runCmd.empty() && executableExists(def.runCmd.front())) {
-            return def.runCmd;
+        if (!def.runCmd.empty()) {
+#if defined(_WIN32)
+            if (auto executable = findExecutable(def.runCmd.front())) {
+                std::vector<std::string> argv = def.runCmd;
+                argv.front() = std::move(*executable);
+                return argv;
+            }
+#else
+            if (executableExists(def.runCmd.front())) {
+                return def.runCmd;
+            }
+#endif
         }
         for (const auto& runner : runners()) {
             const std::string& package = runner.python ? def.pyPackage : def.npmPackage;
-            if (package.empty() || !executableExists(runner.tool)) {
+            if (package.empty()) {
                 continue;
             }
+#if defined(_WIN32)
+            auto executable = findExecutable(runner.tool);
+            if (!executable) {
+                continue;
+            }
+#else
+            if (!executableExists(runner.tool)) {
+                continue;
+            }
+#endif
             std::vector<std::string> argv = runner.prefix;
+#if defined(_WIN32)
+            argv.front() = std::move(*executable);
+#endif
             argv.push_back(package);
             argv.insert(argv.end(), def.runArgs.begin(), def.runArgs.end());
             return argv;
@@ -178,7 +258,11 @@ namespace acp::agents {
     }
 
     RunResult runInstall(const std::string& command) {
+#if defined(_WIN32)
+        return run({"cmd.exe", "/d", "/s", "/c", command});
+#else
         return run({"/bin/sh", "-lc", command});
+#endif
     }
 
 } // namespace acp::agents
